@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malvón - Controle de Estoque</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Sistema de controle de estoque para Empanadas Malvón">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Malvón Stock">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Ícones PWA -->
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <!-- Scripts externos -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        .lucide { width: 1em; height: 1em; }
+        /* Esconder barra de endereço em iOS */
+        body { 
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Estilo para tela cheia */
+        .pwa-container {
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then((registration) => {
+                        console.log('SW registrado com sucesso:', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW falhou ao registrar:', registrationError);
+                    });
+            });
+        }
+        
+        // Ícones Lucide simplificados
+        const Package = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m7.5 4.27 9 5.15"/>
+                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                <path d="m3.3 7 8.7 5 8.7-5"/>
+                <path d="M12 22V12"/>
+            </svg>
+        );
+
+        const Plus = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+            </svg>
+        );
+
+        const ChefHat = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
+                <line x1="6" x2="18" y1="17" y2="17"/>
+            </svg>
+        );
+
+        const History = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M12 7v5l4 2"/>
+            </svg>
+        );
+
+        const AlertTriangle = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                <path d="M12 9v4"/>
+                <path d="m12 17 .01 0"/>
+            </svg>
+        );
+
+        const BarChart3 = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 3v18h18"/>
+                <path d="M18 17V9"/>
+                <path d="M13 17V5"/>
+                <path d="M8 17v-3"/>
+            </svg>
+        );
+
+        const AlertCircle = () => (
+            <svg className="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" x2="12" y1="8" y2="12"/>
+                <line x1="12" x2="12.01" y1="16" y2="16"/>
+            </svg>
+        );
+
+        const EmpanadaStockControl = () => {
+          const categorias = {
+            'Empanadas Veganas': ['Humita Vegana'],
+            'Empanadas Clássicas': ['Kebab', 'Carne Suave', 'Carne Picante', 'Fiambre Queijo', 'Atum', 'Cebola e Queijo', 'Cheese Bacon', 'Frango Especial'],
+            'Empanadas Gourmet': ['Roquefort Pera', 'Mortadela Pistacio', 'Oh My Goat', 'Cochinita', 'Smash Burger', 'Caprese', 'Assado Especial', 'Rabo de Boi', 'Costelinha BBG', 'Frango Thai', 'Bochecha Especial', 'Provolone e Tomate Seco']
+          };
+
+          const sabores = [
+            'Humita Vegana', 'Kebab', 'Roquefort Pera', 'Mortadela Pistacio', 'Oh My Goat',
+            'Carne Suave', 'Carne Picante', 'Fiambre Queijo', 'Atum', 'Cebola e Queijo',
+            'Cheese Bacon', 'Frango Especial', 'Cochinita', 'Smash Burger', 'Caprese',
+            'Assado Especial', 'Rabo de Boi', 'Costelinha BBG', 'Frango Thai', 'Bochecha Especial',
+            'Provolone e Tomate Seco'
+          ];
+
+          // Estados
+          const [estoque, setEstoque] = useState(() => {
+            const stored = localStorage.getItem('empanadas-estoque');
+            if (stored) return JSON.parse(stored);
+            
+            const inicial = {};
+            sabores.forEach(sabor => {
+              inicial[sabor] = 0;
+            });
+            return inicial;
+          });
+
+          const [historico, setHistorico] = useState(() => {
+            const stored = localStorage.getItem('empanadas-historico');
+            return stored ? JSON.parse(stored) : [];
+          });
+
+          const [estoqueAberto, setEstoqueAberto] = useState(true);
+          const [historicoAberto, setHistoricoAberto] = useState(false);
+          const [dashboardAberto, setDashboardAberto] = useState(false);
+          const [totalEstoqueAberto, setTotalEstoqueAberto] = useState(false);
+          const [alertasAberto, setAlertasAberto] = useState(false);
+          const [modalAberto, setModalAberto] = useState(false);
+          const [tipoOperacao, setTipoOperacao] = useState('entrada');
+          const [filtroHistorico, setFiltroHistorico] = useState('todos');
+          const [quantidades, setQuantidades] = useState(() => {
+            const inicial = {};
+            sabores.forEach(sabor => {
+              inicial[sabor] = '';
+            });
+            return inicial;
+          });
+          const [observacoes, setObservacoes] = useState('');
+
+          // Salvar no localStorage
+          useEffect(() => {
+            localStorage.setItem('empanadas-estoque', JSON.stringify(estoque));
+          }, [estoque]);
+
+          useEffect(() => {
+            localStorage.setItem('empanadas-historico', JSON.stringify(historico));
+          }, [historico]);
+
+          const handleTabClick = (tab) => {
+            if (tab === 'estoque') {
+              setEstoqueAberto(!estoqueAberto);
+              setHistoricoAberto(false);
+              setDashboardAberto(false);
+            } else if (tab === 'historico') {
+              setHistoricoAberto(!historicoAberto);
+              setEstoqueAberto(false);
+              setDashboardAberto(false);
+            } else if (tab === 'dashboard') {
+              setDashboardAberto(!dashboardAberto);
+              setEstoqueAberto(false);
+              setHistoricoAberto(false);
+            }
+          };
+
+          const handleOperacao = () => {
+            // Verificar se pelo menos um sabor tem quantidade
+            const saboresComQuantidade = sabores.filter(sabor => 
+              quantidades[sabor] && parseInt(quantidades[sabor]) > 0
+            );
+            
+            if (saboresComQuantidade.length === 0) return;
+
+            const movimentacoes = [];
+            const novoEstoque = { ...estoque };
+            
+            saboresComQuantidade.forEach(sabor => {
+              const qtd = parseInt(quantidades[sabor]);
+              const estoqueAnterior = estoque[sabor];
+              
+              if (tipoOperacao === 'entrada') {
+                novoEstoque[sabor] += qtd;
+              } else if (tipoOperacao === 'saida') {
+                novoEstoque[sabor] = Math.max(0, novoEstoque[sabor] - qtd);
+              } else { // rutura
+                novoEstoque[sabor] = Math.max(0, novoEstoque[sabor] - qtd);
+              }
+
+              movimentacoes.push({
+                sabor,
+                quantidade: qtd,
+                estoqueAnterior,
+                estoqueAtual: novoEstoque[sabor]
+              });
+            });
+
+            setEstoque(novoEstoque);
+
+            // Adicionar ao histórico (uma entrada para toda a operação)
+            const novaEntrada = {
+              id: Date.now(),
+              data: new Date().toLocaleString('pt-BR'),
+              tipo: tipoOperacao,
+              movimentacoes,
+              observacoes: observacoes || (
+                tipoOperacao === 'saida' ? 'Fornada para assar' : 
+                tipoOperacao === 'entrada' ? 'Entrada no estoque' : 
+                'Rutura de estoque'
+              ),
+              totalItens: movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0)
+            };
+
+            setHistorico(prev => [novaEntrada, ...prev]);
+
+            // Limpar formulário
+            const quantidadesLimpas = {};
+            sabores.forEach(sabor => {
+              quantidadesLimpas[sabor] = '';
+            });
+            setQuantidades(quantidadesLimpas);
+            setObservacoes('');
+            setModalAberto(false);
+          };
+
+          const getStatusColor = (quantidade) => {
+            if (quantidade === 0) return 'text-red-600 bg-red-50';
+            if (quantidade < 80) return 'text-yellow-600 bg-yellow-50';
+            return 'text-green-600 bg-green-50';
+          };
+
+          const totalEstoque = Object.values(estoque).reduce((sum, qty) => sum + qty, 0);
+          const saboresEmFalta = sabores.filter(sabor => estoque[sabor] === 0).length;
+          const saboresBaixoEstoque = sabores.filter(sabor => estoque[sabor] > 0 && estoque[sabor] < 80).length;
+
+          return (
+            <div className="pwa-container min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+              {/* Header */}
+              <div className="bg-white shadow-lg border-b-4 border-black">
+                <div className="max-w-7xl mx-auto px-4 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <img 
+                        src="logo-header.png" 
+                        alt="Malvón" 
+                        className="w-16 h-16 rounded-full object-cover"
+                        onError={(e) => {
+                          // Fallback para a logo SVG se a imagem não carregar
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                      <div className="w-16 h-16 bg-black rounded-full items-center justify-center" style={{display: 'none'}}>
+                        <div className="text-white font-serif text-lg italic">M</div>
+                      </div>
+                      <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Controle de Estoque</h1>
+                        <p className="text-gray-600">Malvón - Empanadas Argentinas</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-4">
+                      <div className="text-center bg-gray-100 px-4 py-2 rounded-lg border-2 border-black">
+                        <div className="text-2xl font-bold text-black">{totalEstoque}</div>
+                        <div className="text-sm text-gray-600">Total</div>
+                      </div>
+                      {saboresEmFalta > 0 && (
+                        <div className="text-center bg-red-100 px-4 py-2 rounded-lg">
+                          <div className="text-2xl font-bold text-red-600">{saboresEmFalta}</div>
+                          <div className="text-sm text-gray-600">Em Falta</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation */}
+              <div className="max-w-7xl mx-auto px-4 py-4">
+                <div className="flex space-x-1 bg-white rounded-lg p-1 shadow-md border border-gray-200">
+                  <button
+                    onClick={() => handleTabClick('estoque')}
+                    className={`flex-1 flex items-center justify-center px-4 py-3 rounded-md transition-all ${
+                      estoqueAberto 
+                        ? 'bg-black text-white shadow-md' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Package className="h-5 w-5 mr-2" />
+                    Estoque Atual
+                  </button>
+                  
+                  <button
+                    onClick={() => handleTabClick('historico')}
+                    className={`flex-1 flex items-center justify-center px-4 py-3 rounded-md transition-all ${
+                      historicoAberto 
+                        ? 'bg-black text-white shadow-md' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <History className="h-5 w-5 mr-2" />
+                    Histórico
+                  </button>
+                  
+                  <button
+                    onClick={() => handleTabClick('dashboard')}
+                    className={`flex-1 flex items-center justify-center px-4 py-3 rounded-md transition-all ${
+                      dashboardAberto 
+                        ? 'bg-black text-white shadow-md' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <BarChart3 className="h-5 w-5 mr-2" />
+                    Dashboard
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="max-w-7xl mx-auto px-4 pb-8">
+                {/* Logo de fundo - aparece quando todos os menus estão fechados */}
+                {!estoqueAberto && !historicoAberto && !dashboardAberto && (
+                  <div className="flex justify-center items-center py-20">
+                    <div className="opacity-30 transition-opacity duration-500">
+                      <img 
+                        src="logo-background.png" 
+                        alt="Malvón Logo" 
+                        className="w-80 h-80 object-contain"
+                        onError={(e) => {
+                          // Fallback para SVG se a imagem não carregar
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'block';
+                        }}
+                      />
+                      <svg width="320" height="320" viewBox="0 0 320 320" className="text-black" style={{display: 'none'}}>
+                        <circle cx="160" cy="160" r="155" fill="none" stroke="currentColor" strokeWidth="6"/>
+                        <circle cx="160" cy="160" r="145" fill="none" stroke="currentColor" strokeWidth="2"/>
+                        <circle cx="160" cy="160" r="120" fill="none" stroke="currentColor" strokeWidth="2"/>
+                        <circle cx="160" cy="160" r="118" fill="currentColor"/>
+                        <path id="top-curve" d="M 70 160 A 90 90 0 0 1 250 160" fill="none"/>
+                        <text className="text-white text-xs font-bold tracking-wider">
+                          <textPath href="#top-curve" startOffset="50%" textAnchor="middle">
+                            EMPANADAS ARGENTINAS
+                          </textPath>
+                        </text>
+                        <path id="bottom-curve" d="M 250 160 A 90 90 0 0 1 70 160" fill="none"/>
+                        <text className="text-white text-xs font-bold tracking-wider">
+                          <textPath href="#bottom-curve" startOffset="50%" textAnchor="middle">
+                            CONFECCIONADAS A MÃO
+                          </textPath>
+                        </text>
+                        <text x="160" y="170" textAnchor="middle" className="text-white text-4xl font-serif italic">
+                          Malvón
+                        </text>
+                      </svg>
+                    </div>
+                  </div>
+                )}
+
+                {estoqueAberto && (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-2xl font-bold text-gray-900">Estoque dos Freezers</h2>
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => {
+                            setTipoOperacao('entrada');
+                            setModalAberto(true);
+                          }}
+                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                        >
+                          <Plus className="h-5 w-5" />
+                          <span>Entrada</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTipoOperacao('saida');
+                            setModalAberto(true);
+                          }}
+                          className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                        >
+                          <ChefHat className="h-5 w-5" />
+                          <span>Fornada</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTipoOperacao('rutura');
+                            setModalAberto(true);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                        >
+                          <AlertCircle className="h-5 w-5" />
+                          <span>Rutura</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {Object.entries(categorias).map(([categoria, saboresCategoria]) => (
+                      <div key={categoria} className="mb-8">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-200 pb-2">
+                          {categoria}
+                        </h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          {saboresCategoria.map(sabor => (
+                            <div key={sabor} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-3">
+                              <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-semibold text-gray-900 text-sm leading-tight">{sabor}</h4>
+                                {estoque[sabor] === 0 && (
+                                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 ml-2" />
+                                )}
+                              </div>
+                              
+                              <div className={`text-2xl font-bold mb-1 px-2 py-1 rounded text-center ${getStatusColor(estoque[sabor])}`}>
+                                {estoque[sabor]}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {historicoAberto && (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-2xl font-bold text-gray-900">Histórico de Movimentações</h2>
+                      
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setFiltroHistorico('todos')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'todos' 
+                              ? 'bg-black text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          onClick={() => setFiltroHistorico('entrada')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'entrada' 
+                              ? 'bg-green-500 text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Entradas
+                        </button>
+                        <button
+                          onClick={() => setFiltroHistorico('saida')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'saida' 
+                              ? 'bg-black text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Fornadas
+                        </button>
+                        <button
+                          onClick={() => setFiltroHistorico('rutura')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'rutura' 
+                              ? 'bg-red-500 text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Ruturas
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sabor</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operação</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantidade</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estoque</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {historico
+                              .filter(entrada => filtroHistorico === 'todos' || entrada.tipo === filtroHistorico)
+                              .map(entrada => (
+                              <tr key={entrada.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {entrada.data}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900">
+                                  <div className="space-y-1">
+                                    {entrada.movimentacoes.map((mov, idx) => (
+                                      <div key={idx} className="text-xs">
+                                        <span className="font-medium">{mov.sabor}</span>: {mov.quantidade}un
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                    entrada.tipo === 'entrada' 
+                                      ? 'bg-green-100 text-green-800' 
+                                      : entrada.tipo === 'saida'
+                                      ? 'bg-orange-100 text-orange-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}>
+                                    {entrada.tipo === 'entrada' ? 'ENTRADA' : 
+                                     entrada.tipo === 'saida' ? 'FORNADA' : 'RUTURA'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <span className="font-bold">
+                                    {entrada.tipo === 'entrada' ? '+' : '-'}{entrada.totalItens}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900">
+                                  <div className="space-y-1">
+                                    {entrada.movimentacoes.map((mov, idx) => (
+                                      <div key={idx} className="text-xs">
+                                        {mov.estoqueAnterior} → {mov.estoqueAtual}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  {entrada.observacoes}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        
+                        {historico.filter(entrada => filtroHistorico === 'todos' || entrada.tipo === filtroHistorico).length === 0 && (
+                          <div className="text-center py-12">
+                            <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-500">Nenhuma movimentação registrada ainda</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {dashboardAberto && (
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                      <button 
+                        onClick={() => setTotalEstoqueAberto(!totalEstoqueAberto)}
+                        className="bg-white rounded-xl shadow-md p-6 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center">
+                          <div className="bg-blue-100 p-3 rounded-lg">
+                            <Package className="h-8 w-8 text-blue-600" />
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-gray-600 text-sm">Total em Estoque</p>
+                            <p className="text-2xl font-bold text-gray-900">{totalEstoque}</p>
+                          </div>
+                        </div>
+                      </button>
+                      
+                      <div className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex items-center">
+                          <div className="bg-red-100 p-3 rounded-lg">
+                            <AlertTriangle className="h-8 w-8 text-red-600" />
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-gray-600 text-sm">Sabores em Falta</p>
+                            <p className="text-2xl font-bold text-gray-900">{saboresEmFalta}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex items-center">
+                          <div className="bg-yellow-100 p-3 rounded-lg">
+                            <AlertTriangle className="h-8 w-8 text-yellow-600" />
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-gray-600 text-sm">Baixo Estoque</p>
+                            <p className="text-2xl font-bold text-gray-900">{saboresBaixoEstoque}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {totalEstoqueAberto && (
+                      <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                          <Package className="h-5 w-5 text-blue-500 mr-2" />
+                          Estoque Completo
+                        </h3>
+                        
+                        <div className="space-y-2">
+                          {sabores.map(sabor => (
+                            <div key={sabor} className={`flex items-center justify-between p-3 rounded-lg ${
+                              estoque[sabor] === 0 ? 'bg-red-50' :
+                              estoque[sabor] < 80 ? 'bg-yellow-50' : 'bg-green-50'
+                            }`}>
+                              <span className={`font-medium ${
+                                estoque[sabor] === 0 ? 'text-red-900' :
+                                estoque[sabor] < 80 ? 'text-yellow-900' : 'text-green-900'
+                              }`}>{sabor}</span>
+                              <span className={`font-bold ${
+                                estoque[sabor] === 0 ? 'text-red-600' :
+                                estoque[sabor] < 80 ? 'text-yellow-600' : 'text-green-600'
+                              }`}>{estoque[sabor]} unidades</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(saboresEmFalta > 0 || saboresBaixoEstoque > 0) && (
+                      <div className="bg-white rounded-xl shadow-md">
+                        <button 
+                          onClick={() => setAlertasAberto(!alertasAberto)}
+                          className="w-full p-6 text-left hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" />
+                              <h3 className="text-lg font-semibold text-gray-900">Alertas de Estoque</h3>
+                            </div>
+                            <div className="text-gray-400">
+                              {alertasAberto ? '▼' : '▶'}
+                            </div>
+                          </div>
+                        </button>
+                        
+                        {alertasAberto && (
+                          <div className="px-6 pb-6 border-t border-gray-100">
+                            <div className="space-y-2 mt-4">
+                              {sabores.filter(sabor => estoque[sabor] === 0).map(sabor => (
+                                <div key={sabor} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                                  <span className="font-medium text-red-900">{sabor}</span>
+                                  <span className="text-red-600 font-bold">SEM ESTOQUE</span>
+                                </div>
+                              ))}
+                              
+                              {sabores.filter(sabor => estoque[sabor] > 0 && estoque[sabor] < 80).map(sabor => (
+                                <div key={sabor} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                                  <span className="font-medium text-yellow-900">{sabor}</span>
+                                  <span className="text-yellow-600 font-bold">{estoque[sabor]} unidades</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal */}
+              {modalAberto && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      {tipoOperacao === 'entrada' ? 'Entrada em Lote no Estoque' : 
+                       tipoOperacao === 'saida' ? 'Registrar Fornada Completa' :
+                       'Registrar Rutura de Estoque'}
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {tipoOperacao === 'entrada' ? 'Quantidades Recebidas' : 
+                           tipoOperacao === 'saida' ? 'Quantidades para Assar' :
+                           'Quantidades com Rutura'}
+                        </label>
+                        
+                        <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                          {sabores.map(sabor => (
+                            <div key={sabor} className="flex items-center justify-between">
+                              <label className="text-sm text-gray-700 flex-1 mr-2">{sabor}</label>
+                              <div className="flex items-center space-x-2">
+                                <span className="text-xs text-gray-500">({estoque[sabor]})</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={quantidades[sabor]}
+                                  onChange={(e) => setQuantidades(prev => ({
+                                    ...prev,
+                                    [sabor]: e.target.value
+                                  }))}
+                                  className="w-20 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-transparent text-center"
+                                  placeholder="0"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
+                        <input
+                          type="text"
+                          value={observacoes}
+                          onChange={(e) => setObservacoes(e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder={tipoOperacao === 'entrada' ? 'Ex: Produção matinal' : 
+                                     tipoOperacao === 'saida' ? 'Ex: Fornada do almoço' :
+                                     'Ex: Empanadas vencidas'}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-3 mt-6">
+                      <button
+                        onClick={() => setModalAberto(false)}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleOperacao}
+                        disabled={!sabores.some(sabor => quantidades[sabor] && parseInt(quantidades[sabor]) > 0)}
+                        className={`flex-1 px-4 py-2 text-white rounded-lg transition-colors ${
+                          tipoOperacao === 'entrada'
+                            ? 'bg-green-500 hover:bg-green-600 disabled:bg-gray-300'
+                            : tipoOperacao === 'saida'
+                            ? 'bg-black hover:bg-gray-800 disabled:bg-gray-300'
+                            : 'bg-red-500 hover:bg-red-600 disabled:bg-gray-300'
+                        }`}
+                      >
+                        {tipoOperacao === 'entrada' ? 'Registrar Entrada' : 
+                         tipoOperacao === 'saida' ? 'Registrar Fornada' :
+                         'Registrar Rutura'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        ReactDOM.render(<EmpanadaStockControl />, document.getElementById('root'));
+    </script>
+</body>
+</html>
