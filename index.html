@@ -210,7 +210,7 @@
                 novoEstoque[sabor] += qtd;
               } else if (tipoOperacao === 'saida') {
                 novoEstoque[sabor] = Math.max(0, novoEstoque[sabor] - qtd);
-              } else { // rutura
+              } else { // rotura
                 novoEstoque[sabor] = Math.max(0, novoEstoque[sabor] - qtd);
               }
 
@@ -233,7 +233,7 @@
               observacoes: observacoes || (
                 tipoOperacao === 'saida' ? 'Fornada para assar' : 
                 tipoOperacao === 'entrada' ? 'Entrada no estoque' : 
-                'Rutura de estoque'
+                'Rotura de estoque'
               ),
               totalItens: movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0)
             };
@@ -314,7 +314,7 @@
                     }`}
                   >
                     <Package className="h-5 w-5 mr-2" />
-                    Estoque Atual
+                    Main
                   </button>
                   
                   <button
@@ -385,66 +385,52 @@
                 )}
 
                 {estoqueAberto && (
-                  <div>
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-2xl font-bold text-gray-900">Estoque dos Freezers</h2>
-                      <div className="flex space-x-3">
+                  <div className="flex justify-center items-center min-h-[400px]">
+                    <div className="text-center">
+                      <h2 className="text-3xl font-bold text-gray-900 mb-8">Operações de Estoque</h2>
+                      
+                      <div className="flex space-x-6 justify-center">
                         <button
                           onClick={() => {
                             setTipoOperacao('entrada');
                             setModalAberto(true);
                           }}
-                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                          className="bg-green-500 hover:bg-green-600 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
                         >
-                          <Plus className="h-5 w-5" />
-                          <span>Entrada</span>
+                          <Plus className="h-8 w-8" />
+                          <span className="text-lg font-semibold">Entrada</span>
+                          <span className="text-sm opacity-90">Receber Estoque</span>
                         </button>
+                        
                         <button
                           onClick={() => {
                             setTipoOperacao('saida');
                             setModalAberto(true);
                           }}
-                          className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                          className="bg-black hover:bg-gray-800 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
                         >
-                          <ChefHat className="h-5 w-5" />
-                          <span>Fornada</span>
+                          <ChefHat className="h-8 w-8" />
+                          <span className="text-lg font-semibold">Fornada</span>
+                          <span className="text-sm opacity-90">Enviar para Assar</span>
                         </button>
+                        
                         <button
                           onClick={() => {
-                            setTipoOperacao('rutura');
+                            setTipoOperacao('rotura');
                             setModalAberto(true);
                           }}
-                          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                          className="bg-red-500 hover:bg-red-600 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
                         >
-                          <AlertCircle className="h-5 w-5" />
-                          <span>Rutura</span>
+                          <AlertCircle className="h-8 w-8" />
+                          <span className="text-lg font-semibold">Rotura</span>
+                          <span className="text-sm opacity-90">Registrar Perdas</span>
                         </button>
                       </div>
+                      
+                      <p className="text-gray-600 mt-8 text-lg">
+                        Selecione uma operação para gerenciar o estoque
+                      </p>
                     </div>
-
-                    {Object.entries(categorias).map(([categoria, saboresCategoria]) => (
-                      <div key={categoria} className="mb-8">
-                        <h3 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-200 pb-2">
-                          {categoria}
-                        </h3>
-                        <div className="grid grid-cols-3 gap-4">
-                          {saboresCategoria.map(sabor => (
-                            <div key={sabor} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-3">
-                              <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-semibold text-gray-900 text-sm leading-tight">{sabor}</h4>
-                                {estoque[sabor] === 0 && (
-                                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 ml-2" />
-                                )}
-                              </div>
-                              
-                              <div className={`text-2xl font-bold mb-1 px-2 py-1 rounded text-center ${getStatusColor(estoque[sabor])}`}>
-                                {estoque[sabor]}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 )}
 
@@ -485,14 +471,14 @@
                           Fornadas
                         </button>
                         <button
-                          onClick={() => setFiltroHistorico('rutura')}
+                          onClick={() => setFiltroHistorico('rotura')}
                           className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                            filtroHistorico === 'rutura' 
+                            filtroHistorico === 'rotura' 
                               ? 'bg-red-500 text-white' 
                               : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                           }`}
                         >
-                          Ruturas
+                          Roturas
                         </button>
                       </div>
                     </div>
@@ -536,7 +522,7 @@
                                       : 'bg-red-100 text-red-800'
                                   }`}>
                                     {entrada.tipo === 'entrada' ? 'ENTRADA' : 
-                                     entrada.tipo === 'saida' ? 'FORNADA' : 'RUTURA'}
+                                     entrada.tipo === 'saida' ? 'FORNADA' : 'ROTURA'}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -621,26 +607,32 @@
                       <div className="bg-white rounded-xl shadow-md p-6 mb-8">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                           <Package className="h-5 w-5 text-blue-500 mr-2" />
-                          Estoque Completo
+                          Estoque Completo por Categoria
                         </h3>
                         
-                        <div className="space-y-2">
-                          {sabores.map(sabor => (
-                            <div key={sabor} className={`flex items-center justify-between p-3 rounded-lg ${
-                              estoque[sabor] === 0 ? 'bg-red-50' :
-                              estoque[sabor] < 80 ? 'bg-yellow-50' : 'bg-green-50'
-                            }`}>
-                              <span className={`font-medium ${
-                                estoque[sabor] === 0 ? 'text-red-900' :
-                                estoque[sabor] < 80 ? 'text-yellow-900' : 'text-green-900'
-                              }`}>{sabor}</span>
-                              <span className={`font-bold ${
-                                estoque[sabor] === 0 ? 'text-red-600' :
-                                estoque[sabor] < 80 ? 'text-yellow-600' : 'text-green-600'
-                              }`}>{estoque[sabor]} unidades</span>
+                        {Object.entries(categorias).map(([categoria, saboresCategoria]) => (
+                          <div key={categoria} className="mb-8">
+                            <h4 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-200 pb-2">
+                              {categoria}
+                            </h4>
+                            <div className="grid grid-cols-3 gap-4">
+                              {saboresCategoria.map(sabor => (
+                                <div key={sabor} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-3 border">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <h5 className="font-semibold text-gray-900 text-sm leading-tight">{sabor}</h5>
+                                    {estoque[sabor] === 0 && (
+                                      <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 ml-2" />
+                                    )}
+                                  </div>
+                                  
+                                  <div className={`text-2xl font-bold mb-1 px-2 py-1 rounded text-center ${getStatusColor(estoque[sabor])}`}>
+                                    {estoque[sabor]}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -693,7 +685,7 @@
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">
                       {tipoOperacao === 'entrada' ? 'Entrada em Lote no Estoque' : 
                        tipoOperacao === 'saida' ? 'Registrar Fornada Completa' :
-                       'Registrar Rutura de Estoque'}
+                       'Registrar Rotura de Estoque'}
                     </h3>
                     
                     <div className="space-y-4">
@@ -701,7 +693,7 @@
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           {tipoOperacao === 'entrada' ? 'Quantidades Recebidas' : 
                            tipoOperacao === 'saida' ? 'Quantidades para Assar' :
-                           'Quantidades com Rutura'}
+                           'Quantidades com Rotura'}
                         </label>
                         
                         <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
@@ -761,7 +753,7 @@
                       >
                         {tipoOperacao === 'entrada' ? 'Registrar Entrada' : 
                          tipoOperacao === 'saida' ? 'Registrar Fornada' :
-                         'Registrar Rutura'}
+                         'Registrar Rotura'}
                       </button>
                     </div>
                   </div>
