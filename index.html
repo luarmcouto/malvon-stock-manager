@@ -144,6 +144,15 @@
             return inicial;
           });
 
+          const [operacoesDia, setOperacoesDia] = useState(() => {
+            const stored = localStorage.getItem('empanadas-operacoes-dia');
+            return stored ? JSON.parse(stored) : {
+              dataAtual: new Date().toDateString(),
+              aberturaFeita: false,
+              fechoFeito: false
+            };
+          });
+
           const [historico, setHistorico] = useState(() => {
             const stored = localStorage.getItem('empanadas-historico');
             return stored ? JSON.parse(stored) : [];
@@ -205,7 +214,24 @@
           });
           const [observacoes, setObservacoes] = useState('');
 
+          const verificarMudancaDia = () => {
+            const hoje = new Date().toDateString();
+            if (operacoesDia.dataAtual !== hoje) {
+              // Resetar controles para novo dia
+              const novasOperacoes = {
+                dataAtual: hoje,
+                aberturaFeita: false,
+                fechoFeito: false
+              };
+              setOperacoesDia(novasOperacoes);
+              return true; // Mudou o dia
+            }
+            return false; // Mesmo dia
+          };
           // Salvar no localStorage
+          useEffect(() => {
+            localStorage.setItem('empanadas-operacoes-dia', JSON.stringify(operacoesDia));
+          }, [operacoesDia]);
           useEffect(() => {
             localStorage.setItem('empanadas-estoque', JSON.stringify(estoque));
           }, [estoque]);
@@ -291,6 +317,11 @@
           };
 
           const handleAbertura = () => {
+            verificarMudancaDia();
+              if (operacoesDia.aberturaFeita) {
+                alert('Abertura já foi realizada hoje!');
+                return;
+              }
             const calculado = calcularAbertura();
             setCalculoAbertura(calculado);
             setTipoOperacao('abertura');
@@ -329,9 +360,19 @@
 
             setHistorico(prev => [novaEntrada, ...prev]);
             setModalAberturaAberto(false);
+            setOperacoesDia(prev => ({ ...prev, aberturaFeita: true }));
           };
 
           const handleFecho = () => {
+            verificarMudancaDia();
+              if (operacoesDia.fechoFeito) {
+                alert('Fecho já foi realizado hoje!');
+                return;
+              }
+              if (!operacoesDia.aberturaFeita) {
+                alert('É necessário fazer a abertura antes do fecho!');
+                return;
+              }
             // Inicializar com valores vazios (0)
             const quantidadesIniciais = {};
             sabores.forEach(sabor => {
@@ -373,6 +414,7 @@
 
             setHistorico(prev => [novaEntrada, ...prev]);
             setUltimoFecho({ data: new Date().toISOString(), estoque: novoEstoque });
+            setOperacoesDia(prev => ({ ...prev, fechoFeito: true }));
 
             // Limpar estados
             setQuantidades({});
@@ -618,7 +660,7 @@
                         </button>
 
                         {/* Botões condicionais por horário */}
-                        {verificarHorario().aberturaDisponivel && (
+                        {verificarHorario().aberturaDisponivel && !operacoesDia.aberturaFeita && (
                           <button
                             onClick={handleAbertura}
                             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
@@ -632,7 +674,7 @@
                           </button>
                         )}
 
-                        {verificarHorario().fechoDisponivel && (
+                        {verificarHorario().fechoDisponivel && !operacoesDia.fechoFeito && (
                           <button
                             onClick={handleFecho}
                             className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
