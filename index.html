@@ -154,9 +154,48 @@
           const [dashboardAberto, setDashboardAberto] = useState(false);
           const [totalEstoqueAberto, setTotalEstoqueAberto] = useState(false);
           const [alertasAberto, setAlertasAberto] = useState(false);
+          const [estoqueImagemAberto, setEstoqueImagemAberto] = useState(false);
+          const [horariosAberto, setHorariosAberto] = useState(false);
           const [modalAberto, setModalAberto] = useState(false);
           const [tipoOperacao, setTipoOperacao] = useState('entrada');
           const [filtroHistorico, setFiltroHistorico] = useState('todos');
+          const [modalEstoqueImagemAberto, setModalEstoqueImagemAberto] = useState(false);
+          const [modalHorariosAberto, setModalHorariosAberto] = useState(false);
+          const [modalAberturaAberto, setModalAberturaAberto] = useState(false);
+          const [modalFechoAberto, setModalFechoAberto] = useState(false);
+          const [estoqueImagemTemp, setEstoqueImagemTemp] = useState({});
+          const [horariosTemp, setHorariosTemp] = useState({});
+          const [calculoAbertura, setCalculoAbertura] = useState({});
+          const [valorEditado, setValorEditado] = useState({});
+
+          // Estados para nova funcionalidade
+          const [estoqueImagem, setEstoqueImagem] = useState(() => {
+            const stored = localStorage.getItem('empanadas-estoque-imagem');
+            if (stored) return JSON.parse(stored);
+            
+            const inicial = {};
+            sabores.forEach(sabor => {
+              inicial[sabor] = 20; // Meta padrão
+            });
+            return inicial;
+          });
+          
+          const [configuracaoHorarios, setConfiguracaoHorarios] = useState(() => {
+            const stored = localStorage.getItem('empanadas-horarios');
+            if (stored) return JSON.parse(stored);
+            
+            return {
+              aberturaInicio: '06:00',
+              aberturaFim: '12:00',
+              fechoInicio: '18:00',
+              fechoFim: '23:59'
+            };
+          });
+          
+          const [ultimoFecho, setUltimoFecho] = useState(() => {
+            const stored = localStorage.getItem('empanadas-ultimo-fecho');
+            return stored ? JSON.parse(stored) : null;
+          });
           const [quantidades, setQuantidades] = useState(() => {
             const inicial = {};
             sabores.forEach(sabor => {
@@ -175,6 +214,18 @@
             localStorage.setItem('empanadas-historico', JSON.stringify(historico));
           }, [historico]);
 
+          useEffect(() => {
+            localStorage.setItem('empanadas-estoque-imagem', JSON.stringify(estoqueImagem));
+          }, [estoqueImagem]);
+
+          useEffect(() => {
+            localStorage.setItem('empanadas-horarios', JSON.stringify(configuracaoHorarios));
+          }, [configuracaoHorarios]);
+
+          useEffect(() => {
+            localStorage.setItem('empanadas-ultimo-fecho', JSON.stringify(ultimoFecho));
+          }, [ultimoFecho]);
+
           const handleTabClick = (tab) => {
             if (tab === 'estoque') {
               setEstoqueAberto(!estoqueAberto);
@@ -191,6 +242,145 @@
             }
           };
 
+          // Verificar se botões devem aparecer baseado no horário
+          const verificarHorario = () => {
+            const agora = new Date();
+            const horaAtual = agora.getHours().toString().padStart(2, '0') + ':' + agora.getMinutes().toString().padStart(2, '0');
+            
+            const aberturaDisponivel = horaAtual >= configuracaoHorarios.aberturaInicio && horaAtual <= configuracaoHorarios.aberturaFim;
+            const fechoDisponivel = horaAtual >= configuracaoHorarios.fechoInicio && horaAtual <= configuracaoHorarios.fechoFim;
+            
+            return { aberturaDisponivel, fechoDisponivel };
+          };
+
+          // Verificar se pode fazer abertura (precisa ter feito fecho no dia anterior)
+          const podeAbrirDia = () => {
+            const hoje = new Date().toDateString();
+            
+            // Verificar se já fez abertura hoje
+            const aberturaHoje = historico.find(h => 
+              h.tipo === 'ABERTURA' && 
+              new Date(h.data).toDateString() === hoje
+            );
+            
+            // Se já fez abertura hoje, não pode fazer outra
+            if (aberturaHoje) return false;
+            
+            // Primeira vez pode abrir
+            if (!ultimoFecho) return true;
+            
+            const ultimaData = new Date(ultimoFecho.data).toDateString();
+            const ontem = new Date();
+            ontem.setDate(ontem.getDate() - 1);
+            
+            // Só pode abrir se fez fecho ontem ou antes
+            return ultimaData === ontem.toDateString() || ultimaData < ontem.toDateString();
+          };
+          // Calcular quantidades para abertura
+          const calcularAbertura = () => {
+            const calculo = {};
+            sabores.forEach(sabor => {
+              const meta = estoqueImagem[sabor] || 20;
+              // Usar dados do último fecho, se não existir usa 0
+              const sobrou = ultimoFecho && ultimoFecho.estoque ? 
+                (ultimoFecho.estoque[sabor] || 0) : 0;
+              const paraAssar = Math.max(0, meta - sobrou);
+              calculo[sabor] = paraAssar;
+            });
+            return calculo;
+          };
+
+          const handleAbertura = () => {
+            const calculado = calcularAbertura();
+            setCalculoAbertura(calculado);
+            setTipoOperacao('abertura');
+            setModalAberturaAberto(true);
+          };
+
+          const confirmarAbertura = () => {
+            const novoEstoque = { ...estoque };
+            
+            const movimentacoes = Object.entries(calculoAbertura)
+              .filter(([sabor, qtd]) => qtd > 0)
+              .map(([sabor, qtd]) => {
+                const estoqueAnterior = estoque[sabor];
+                novoEstoque[sabor] = Math.max(0, novoEstoque[sabor] - qtd);
+                
+                return {
+                  sabor,
+                  quantidade: qtd,
+                  estoqueAnterior,
+                  estoqueAtual: novoEstoque[sabor],
+                  meta: estoqueImagem[sabor] || 20
+                };
+              });
+
+            setEstoque(novoEstoque); // ← Retira do estoque
+
+            const novaEntrada = {
+              id: Date.now(),
+              data: new Date().toLocaleString('pt-BR'),
+              tipo: 'abertura',
+              movimentacoes,
+              observacoes: 'Cálculo automático de abertura',
+              totalItens: Object.values(calculoAbertura).reduce((sum, qty) => sum + qty, 0),
+              editado: false
+            };
+
+            setHistorico(prev => [novaEntrada, ...prev]);
+            setModalAberturaAberto(false);
+          };
+
+          const handleFecho = () => {
+            // Inicializar com valores vazios (0)
+            const quantidadesIniciais = {};
+            sabores.forEach(sabor => {
+              quantidadesIniciais[sabor] = '';
+            });
+            setQuantidades(quantidadesIniciais);
+            setTipoOperacao('fecho');
+            setModalFechoAberto(true);
+          };
+
+          const confirmarFecho = () => {
+            const movimentacoes = [];
+            const novoEstoque = { ...estoque };
+            
+            sabores.forEach(sabor => {
+              const qtdFinal = parseInt(quantidades[sabor]) || 0;
+              const estoqueAnterior = estoque[sabor];
+              
+              novoEstoque[sabor] = qtdFinal;
+              
+              movimentacoes.push({
+                sabor,
+                quantidade: qtdFinal,
+                estoqueAnterior,
+                estoqueAtual: qtdFinal,
+                editado: valorEditado[sabor] || false
+              });
+            });
+
+            const novaEntrada = {
+              id: Date.now(),
+              data: new Date().toLocaleString('pt-BR'),
+              tipo: 'fecho',
+              movimentacoes,
+              observacoes: observacoes || 'Fecho do dia - estoque final',
+              totalItens: movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0),
+              editado: Object.values(valorEditado).some(editado => editado)
+            };
+
+            setHistorico(prev => [novaEntrada, ...prev]);
+            setUltimoFecho({ data: new Date().toISOString(), estoque: novoEstoque });
+
+            // Limpar estados
+            setQuantidades({});
+            setObservacoes('');
+            setValorEditado({});
+            setModalFechoAberto(false);
+          };
+          
           const handleOperacao = () => {
             // Verificar se pelo menos um sabor tem quantidade
             const saboresComQuantidade = sabores.filter(sabor => 
@@ -389,13 +579,14 @@
                     <div className="text-center">
                       <h2 className="text-3xl font-bold text-gray-900 mb-8">Operações de Loja</h2>
                       
-                      <div className="flex space-x-6 justify-center">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 justify-center max-w-4xl mx-auto">
+                        {/* Botões sempre visíveis */}
                         <button
                           onClick={() => {
                             setTipoOperacao('entrada');
                             setModalAberto(true);
                           }}
-                          className="bg-green-500 hover:bg-green-600 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
+                          className="bg-green-500 hover:bg-green-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
                         >
                           <Plus className="h-8 w-8" />
                           <span className="text-lg font-semibold">Entrada</span>
@@ -407,7 +598,7 @@
                             setTipoOperacao('saida');
                             setModalAberto(true);
                           }}
-                          className="bg-black hover:bg-gray-800 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
+                          className="bg-black hover:bg-gray-800 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
                         >
                           <ChefHat className="h-8 w-8" />
                           <span className="text-lg font-semibold">Fornada</span>
@@ -419,12 +610,41 @@
                             setTipoOperacao('rotura');
                             setModalAberto(true);
                           }}
-                          className="bg-red-500 hover:bg-red-600 text-white px-8 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl min-w-[140px]"
+                          className="bg-red-500 hover:bg-red-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
                         >
                           <AlertCircle className="h-8 w-8" />
                           <span className="text-lg font-semibold">Rotura</span>
                           <span className="text-sm opacity-90">Registrar Perdas</span>
                         </button>
+
+                        {/* Botões condicionais por horário */}
+                        {verificarHorario().aberturaDisponivel && (
+                          <button
+                            onClick={handleAbertura}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
+                          >
+                            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="m12 6 0 6 4 2"/>
+                            </svg>
+                            <span className="text-lg font-semibold">Abertura</span>
+                            <span className="text-sm opacity-90">Começar o Dia</span>
+                          </button>
+                        )}
+
+                        {verificarHorario().fechoDisponivel && (
+                          <button
+                            onClick={handleFecho}
+                            className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-xl flex flex-col items-center space-y-3 transition-colors shadow-lg hover:shadow-xl"
+                          >
+                            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="m12 6 0 6 4 2"/>
+                            </svg>
+                            <span className="text-lg font-semibold">Fecho</span>
+                            <span className="text-sm opacity-90">Finalizar o Dia</span>
+                          </button>
+                        )}
                       </div>
                       
                       <p className="text-gray-600 mt-8 text-lg">
@@ -480,6 +700,26 @@
                         >
                           Roturas
                         </button>
+                        <button
+                          onClick={() => setFiltroHistorico('abertura')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'ABERTURA'
+                              ? 'bg-blue-500 text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Aberturas
+                        </button>
+                        <button
+                          onClick={() => setFiltroHistorico('fecho')}
+                          className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                            filtroHistorico === 'FECHO' 
+                              ? 'bg-purple-500 text-white' 
+                              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          }`}
+                        >
+                          Fechos
+                        </button>
                       </div>
                     </div>
                     
@@ -506,11 +746,29 @@
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900">
                                   <div className="space-y-1">
-                                    {entrada.movimentacoes.map((mov, idx) => (
-                                      <div key={idx} className="text-xs">
-                                        <span className="font-medium">{mov.sabor}</span>: {mov.quantidade}un
-                                      </div>
-                                    ))}
+                                    {entrada.tipo === 'abertura' ? (
+                                      entrada.movimentacoes.map((mov, idx) => (
+                                        <div key={idx} className="text-xs">
+                                          <span className="font-medium">{mov.sabor}</span>: 
+                                          <span className="text-blue-600 font-bold"> {mov.quantidade}un para assar</span>
+                                          <span className="text-gray-500"> (meta: {mov.meta})</span>
+                                        </div>
+                                      ))
+                                    ) : entrada.tipo === 'fecho' ? (
+                                      entrada.movimentacoes.map((mov, idx) => (
+                                        <div key={idx} className="text-xs">
+                                          <span className="font-medium">{mov.sabor}</span>: 
+                                          <span className="text-purple-600 font-bold"> {mov.quantidade}un restaram</span>
+                                          {mov.editado && <span className="text-yellow-600"> ✏️</span>}
+                                        </div>
+                                      ))
+                                    ) : (
+                                      entrada.movimentacoes.map((mov, idx) => (
+                                        <div key={idx} className="text-xs">
+                                          <span className="font-medium">{mov.sabor}</span>: {mov.quantidade}un
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
@@ -519,24 +777,54 @@
                                       ? 'bg-green-100 text-green-800' 
                                       : entrada.tipo === 'saida'
                                       ? 'bg-orange-100 text-orange-800'
+                                      : entrada.tipo === 'abertura'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : entrada.tipo === 'fecho'
+                                      ? 'bg-purple-100 text-purple-800'
                                       : 'bg-red-100 text-red-800'
                                   }`}>
                                     {entrada.tipo === 'entrada' ? 'ENTRADA' : 
-                                     entrada.tipo === 'saida' ? 'FORNADA' : 'ROTURA'}
+                                     entrada.tipo === 'saida' ? 'FORNADA' : 
+                                     entrada.tipo === 'abertura' ? 'ABERTURA' :
+                                     entrada.tipo === 'fecho' ? 'FECHO' :
+                                     'ROTURA'}
                                   </span>
+                                  {entrada.editado && (
+                                    <span className="ml-2 px-1 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded">
+                                      EDITADO
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  <span className="font-bold">
-                                    {entrada.tipo === 'entrada' ? '+' : '-'}{entrada.totalItens}
+                                  <span className={`font-bold ${
+                                    entrada.tipo === 'entrada' ? 'text-green-600' :
+                                    entrada.tipo === 'abertura' ? 'text-blue-600' :
+                                    entrada.tipo === 'fecho' ? 'text-purple-600' :
+                                    'text-red-600'
+                                  }`}>
+                                    {entrada.tipo === 'entrada' ? '+' : 
+                                     entrada.tipo === 'abertura' ? '📋' :
+                                     entrada.tipo === 'fecho' ? '🏁' :
+                                     '-'}{entrada.tipo === 'abertura' || entrada.tipo === 'fecho' ? '' : entrada.totalItens}
+                                    {entrada.tipo === 'abertura' && ` ${entrada.totalItens} calc`}
+                                    {entrada.tipo === 'fecho' && ` ${entrada.totalItens} final`}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900">
                                   <div className="space-y-1">
-                                    {entrada.movimentacoes.map((mov, idx) => (
-                                      <div key={idx} className="text-xs">
-                                        {mov.estoqueAnterior} → {mov.estoqueAtual}
+                                    {entrada.tipo === 'abertura' ? (
+                                      <div className="text-xs text-blue-600">
+                                        Cálculo de abertura
                                       </div>
-                                    ))}
+                                    ) : entrada.tipo === 'fecho' ? (
+                                      <div></div>
+                                    ) : (
+                                      entrada.movimentacoes.map((mov, idx) => (
+                                        <div key={idx} className="text-xs">
+                                          {mov.estoqueAnterior} → {mov.estoqueAtual}
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-500">
@@ -562,7 +850,7 @@
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                       <button 
                         onClick={() => setTotalEstoqueAberto(!totalEstoqueAberto)}
                         className="bg-white rounded-xl shadow-md p-6 hover:bg-gray-50 transition-colors text-left"
@@ -598,6 +886,66 @@
                                 <span className="text-lg font-bold text-yellow-600">{saboresBaixoEstoque}</span>
                               </div>
                             </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      <button 
+                        onClick={() => setEstoqueImagemAberto(!estoqueImagemAberto)}
+                        className="bg-white rounded-xl shadow-md p-6 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center">
+                          <div className="bg-green-100 p-3 rounded-lg">
+                            <svg className="h-8 w-8 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                              <path d="M21 3v5h-5"/>
+                              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                              <path d="M3 21v-5h5"/>
+                            </svg>
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-gray-600 text-sm">Estoque de Imagem</p>
+                            <p className="text-2xl font-bold text-gray-900">{Object.values(estoqueImagem).reduce((sum, qty) => sum + qty, 0)}</p>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEstoqueImagemTemp({...estoqueImagem});
+                                setModalEstoqueImagemAberto(true);
+                              }}
+                              className="text-blue-600 text-sm hover:underline mt-1"
+                            >
+                              Configurar Metas →
+                            </button>
+                          </div>
+                        </div>
+                      </button>
+
+                      <button 
+                        onClick={() => setHorariosAberto(!horariosAberto)}
+                        className="bg-white rounded-xl shadow-md p-6 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center">
+                          <div className="bg-purple-100 p-3 rounded-lg">
+                            <svg className="h-8 w-8 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10"/>
+                              <polyline points="12,6 12,12 16,14"/>
+                            </svg>
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-gray-600 text-sm">Horários</p>
+                            <p className="text-lg font-bold text-gray-900">
+                              {configuracaoHorarios.aberturaInicio} - {configuracaoHorarios.fechoFim}
+                            </p>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setHorariosTemp({...configuracaoHorarios});
+                                setModalHorariosAberto(true);
+                              }}
+                              className="text-blue-600 text-sm hover:underline mt-1"
+                            >
+                              Configurar Horários →
+                            </button>
                           </div>
                         </div>
                       </button>
@@ -748,6 +1096,319 @@
                         {tipoOperacao === 'entrada' ? 'Registrar Entrada' : 
                          tipoOperacao === 'saida' ? 'Registrar Fornada' :
                          'Registrar Rotura'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Modal Estoque de Imagem */}
+              {modalEstoqueImagemAberto && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      Configurar Estoque de Imagem (Metas Diárias)
+                    </h3>
+                    
+                    <p className="text-sm text-gray-600 mb-6">
+                      Defina quantas empanadas de cada sabor devem estar sempre disponíveis na vitrine
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                      {sabores.map(sabor => (
+                        <div key={sabor} className="flex items-center justify-between">
+                          <label className="text-sm text-gray-700 flex-1 mr-2">{sabor}</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={estoqueImagemTemp[sabor] || ''}
+                            onChange={(e) => {
+                              setEstoqueImagemTemp(prev => ({
+                                ...prev,
+                                [sabor]: parseInt(e.target.value) || 0
+                              }));
+                            }}
+                            className="w-20 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent text-center"
+                            placeholder="20"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="flex space-x-3 mt-6">
+                      <button
+                        onClick={() => setModalEstoqueImagemAberto(false)}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEstoqueImagem(estoqueImagemTemp);
+                          setModalEstoqueImagemAberto(false);
+                        }}
+                        className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
+                      >
+                        Salvar Metas
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Modal Horários */}
+              {modalHorariosAberto && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-xl max-w-md w-full p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      Configurar Horários de Operação
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Horário da Abertura
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500">Início</label>
+                            <input
+                              type="time"
+                              value={horariosTemp.aberturaInicio || ''}
+                              onChange={(e) => setHorariosTemp(prev => ({
+                                ...prev,
+                                aberturaInicio: e.target.value
+                              }))}
+                              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Fim</label>
+                            <input
+                              type="time"
+                              value={horariosTemp.aberturaFim || ''}
+                              onChange={(e) => setHorariosTemp(prev => ({
+                                ...prev,
+                                aberturaFim: e.target.value
+                              }))}
+                              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Horário do Fecho
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500">Início</label>
+                            <input
+                              type="time"
+                              value={horariosTemp.fechoInicio || ''}
+                              onChange={(e) => setHorariosTemp(prev => ({
+                                ...prev,
+                                fechoInicio: e.target.value
+                              }))}
+                              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Fim</label>
+                            <input
+                              type="time"
+                              value={horariosTemp.fechoFim || ''}
+                              onChange={(e) => setHorariosTemp(prev => ({
+                                ...prev,
+                                fechoFim: e.target.value
+                              }))}
+                              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-3 mt-6">
+                      <button
+                        onClick={() => setModalHorariosAberto(false)}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={() => {
+                          setConfiguracaoHorarios(horariosTemp);
+                          setModalHorariosAberto(false);
+                        }}
+                        className="flex-1 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+                      >
+                        Salvar Horários
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Modal Abertura */}
+              {modalAberturaAberto && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      🌅 Abertura do Dia - Quantidades Calculadas
+                    </h3>
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                      <p className="text-sm text-blue-800">
+                        <strong>Cálculo automático:</strong> Meta de vitrine - Assadas(fecho) = Quantidade para assar
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                      {sabores.map(sabor => {
+                        const meta = estoqueImagem[sabor] || 20;
+                        const assadas = ultimoFecho && ultimoFecho.estoque ? 
+                          (ultimoFecho.estoque[sabor] || 0) : 0;
+                        const paraAssar = calculoAbertura[sabor] || 0;
+                        const estoqueAtual = estoque[sabor] || 0;
+                        
+                        return (
+                          <div key={sabor} className="bg-white p-3 rounded-lg border">
+                            <h4 className="font-medium text-gray-900 mb-2">
+                              {sabor} <span className="text-gray-500 text-sm">({estoqueAtual} em estoque)</span>
+                            </h4>
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Meta vitrine:</span>
+                                <span className="font-medium">{meta}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Assadas (fecho):</span>
+                                <span className="font-medium">{assadas}</span>
+                              </div>
+                              <div className="flex justify-between border-t pt-1">
+                                <span className="text-gray-900 font-medium">Para assar:</span>
+                                <span className={`font-bold ${paraAssar > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                                  {paraAssar > 0 ? paraAssar : '✓ OK'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-medium text-gray-900">Total para assar:</span>
+                        <span className="text-2xl font-bold text-blue-600">
+                          {Object.values(calculoAbertura).reduce((sum, qty) => sum + qty, 0)} unidades
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-3 mt-6">
+                      <button
+                        onClick={() => setModalAberturaAberto(false)}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={confirmarAbertura}
+                        className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                      >
+                        Confirmar Abertura
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Modal Fecho */}
+              {modalFechoAberto && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      🌙 Fecho do Dia - Estoque Final
+                    </h3>
+                    
+                    <div className="bg-purple-50 p-4 rounded-lg mb-6">
+                      <p className="text-sm text-purple-800">
+                        <strong>Informe quantas empanadas sobraram de cada sabor.</strong> Estes valores serão usados para calcular a próxima abertura.
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                      {sabores.map(sabor => (
+                        <div key={sabor} className="flex items-center justify-between">
+                          <label className="text-sm text-gray-700 flex-1 mr-2">{sabor}</label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={quantidades[sabor] || ''}
+                              onChange={(e) => {
+                                const novoValor = e.target.value;
+                                const valorOriginal = estoque[sabor].toString();
+                                
+                                setQuantidades(prev => ({
+                                  ...prev,
+                                  [sabor]: novoValor
+                                }));
+                                
+                                // Marcar como editado se diferente do valor original
+                                setValorEditado(prev => ({
+                                  ...prev,
+                                  [sabor]: novoValor !== valorOriginal
+                                }));
+                              }}
+                              className={`w-20 p-2 border rounded focus:ring-2 focus:border-transparent text-center ${
+                                valorEditado[sabor] 
+                                  ? 'border-yellow-400 focus:ring-yellow-500 bg-yellow-50' 
+                                  : 'border-gray-300 focus:ring-purple-500'
+                              }`}
+                              placeholder="0"
+                            />
+                            {valorEditado[sabor] && (
+                              <span className="text-xs text-yellow-600">✏️</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
+                      <input
+                        type="text"
+                        value={observacoes}
+                        onChange={(e) => setObservacoes(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        placeholder="Ex: Fecho do dia, vendas normais"
+                      />
+                    </div>
+                    
+                    {Object.values(valorEditado).some(editado => editado) && (
+                      <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                          ⚠️ <strong>Valores editados!</strong> Estas alterações serão marcadas no histórico.
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="flex space-x-3 mt-6">
+                      <button
+                        onClick={() => {
+                          setModalFechoAberto(false);
+                          setValorEditado({});
+                        }}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={confirmarFecho}
+                        className="flex-1 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+                      >
+                        Confirmar Fecho
                       </button>
                     </div>
                   </div>
