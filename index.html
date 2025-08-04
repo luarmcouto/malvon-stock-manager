@@ -307,11 +307,13 @@
             const calculo = {};
             sabores.forEach(sabor => {
               const meta = estoqueImagem[sabor] || 20;
-              // Usar dados do último fecho, se não existir usa 0
               const sobrou = ultimoFecho && ultimoFecho.estoque ? 
                 (ultimoFecho.estoque[sabor] || 0) : 0;
-              const paraAssar = Math.max(0, meta - sobrou);
-              calculo[sabor] = paraAssar;
+              const valorProposto = Math.max(0, meta - sobrou);
+              const estoqueAtual = estoque[sabor];
+              
+              // Sua lógica: SE valorProposto > estoqueAtual, ENTÃO usa estoqueAtual
+              calculo[sabor] = Math.min(valorProposto, estoqueAtual);
             });
             return calculo;
           };
@@ -324,11 +326,20 @@
               }
             const calculado = calcularAbertura();
             setCalculoAbertura(calculado);
+            const totalParaAssar = Object.values(calculado).reduce((sum, qty) => sum + qty, 0);
+              if (totalParaAssar === 0) {
+                alert('ATENÇÃO! Você está tentando criar uma fornada sem empanadas!');
+                return;
+              }
             setTipoOperacao('abertura');
             setModalAberturaAberto(true);
           };
 
           const confirmarAbertura = () => {
+            const totalParaAssar = Object.values(calculoAbertura).reduce((sum, qty) => sum + qty, 0);
+            if (!confirm(`Confirma a ABERTURA do dia?\n\nTotal para assar: ${totalParaAssar} empanadas`)) {
+              return;
+            }
             const novoEstoque = { ...estoque };
             
             const movimentacoes = Object.entries(calculoAbertura)
@@ -384,6 +395,13 @@
           };
 
           const confirmarFecho = () => {
+            const totalFinal = Object.values(quantidades)
+              .reduce((sum, qtd) => sum + (parseInt(qtd) || 0), 0);
+              
+            if (!confirm(`Confirma o FECHO do dia?\n\nTotal final: ${totalFinal} empanadas`)) {
+              return;
+            }
+            
             const movimentacoes = [];
             const novoEstoque = { ...estoque };
             
@@ -454,20 +472,22 @@
               });
             });
 
-            setEstoque(novoEstoque);
-
-            // Adicionar ao histórico (uma entrada para toda a operação)
-            const novaEntrada = {
-              id: Date.now(),
-              data: new Date().toLocaleString('pt-BR'),
-              tipo: tipoOperacao,
-              movimentacoes,
-              observacoes: observacoes || (
-                tipoOperacao === 'saida' ? 'Fornada para assar' : 
-                tipoOperacao === 'entrada' ? 'Entrada no estoque' : 
-                'Rotura de estoque'
-              ),
-              totalItens: movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0)
+            if (!confirm(`Confirma a operação de ${tipoOperacao.toUpperCase()}?\n\nTotal: ${movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0)} itens`)) {
+              return;
+            }
+              setEstoque(novoEstoque);
+              // Adicionar ao histórico (uma entrada para toda a operação)
+              const novaEntrada = {
+                id: Date.now(),
+                data: new Date().toLocaleString('pt-BR'),
+                tipo: tipoOperacao,
+                movimentacoes,
+                observacoes: observacoes || (
+                  tipoOperacao === 'saida' ? 'Fornada para assar' : 
+                  tipoOperacao === 'entrada' ? 'Entrada no estoque' : 
+                  'Rotura de estoque'
+                ),
+                totalItens: movimentacoes.reduce((sum, mov) => sum + mov.quantidade, 0)
             };
 
             setHistorico(prev => [novaEntrada, ...prev]);
@@ -1119,7 +1139,16 @@
                     
                     <div className="flex space-x-3 mt-6">
                       <button
-                        onClick={() => setModalAberto(false)}
+                        onClick={() => {
+                          // Limpar todas as quantidades
+                          const quantidadesLimpas = {};
+                          sabores.forEach(sabor => {
+                            quantidadesLimpas[sabor] = '';
+                          });
+                          setQuantidades(quantidadesLimpas);
+                          setObservacoes('');
+                          setModalAberto(false);
+                        }}
                         className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                       >
                         Cancelar
