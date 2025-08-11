@@ -132,6 +132,17 @@
             'Provolone e Tomate Seco'
           ];
 
+          const saboresCarnes = [
+            'Kebab', 'Carne Suave', 'Carne Picante', 'Atum', 'Cheese Bacon', 
+            'Frango Especial', 'Cochinita', 'Smash Burger', 'Assado Especial', 
+            'Rabo de Boi', 'Costelinha BBG', 'Frango Thai', 'Bochecha Especial'
+          ];
+
+          const saboresQueijos = [
+            'Humita Vegana', 'Fiambre Queijo', 'Cebola e Queijo', 'Roquefort Pera', 
+            'Mortadela Pistacio', 'Oh My Goat', 'Caprese', 'Provolone e Tomate Seco'
+          ];
+
           // Estados
           const [usuarioLogado, setUsuarioLogado] = useState(() => {
             const stored = localStorage.getItem('empanadas-usuario');
@@ -183,6 +194,13 @@
           const [horariosTemp, setHorariosTemp] = useState({});
           const [calculoAbertura, setCalculoAbertura] = useState({});
           const [valorEditado, setValorEditado] = useState({});
+          // Estados para tabelas de visualização
+          const [tabelasVisualizacao, setTabelasVisualizacao] = useState(() => {
+            const stored = localStorage.getItem('empanadas-tabelas-visualizacao');
+            return stored ? JSON.parse(stored) : {};
+          });
+          const [modalTabelaAberto, setModalTabelaAberto] = useState(false);
+          const [tabelaAtual, setTabelaAtual] = useState(null);
 
           // Estados para nova funcionalidade
           const [estoqueImagem, setEstoqueImagem] = useState(() => {
@@ -265,6 +283,10 @@
           useEffect(() => {
             localStorage.setItem('empanadas-ultimo-fecho', JSON.stringify(ultimoFecho));
           }, [ultimoFecho]);
+
+          useEffect(() => {
+            localStorage.setItem('empanadas-tabelas-visualizacao', JSON.stringify(tabelasVisualizacao));
+          }, [tabelasVisualizacao]);
 
           //Login Control
           const handleLogin = (usuario, senha) => {
@@ -392,7 +414,7 @@
             
             // Verificar se já fez abertura hoje
             const aberturaHoje = historico.find(h => 
-              h.tipo === 'ABERTURA' && 
+              h.tipo === 'abertura' && 
               new Date(h.data).toDateString() === hoje
             );
             
@@ -423,6 +445,28 @@
               calculo[sabor] = Math.min(valorProposto, estoqueAtual);
             });
             return calculo;
+          };
+
+          // tabela para visualizar fornadas
+          const criarTabelaVisualizacao = (movimentacoes, tipo, operacaoId) => {
+            const carnes = movimentacoes.filter(mov => saboresCarnes.includes(mov.sabor) && mov.quantidade > 0);
+            const queijos = movimentacoes.filter(mov => saboresQueijos.includes(mov.sabor) && mov.quantidade > 0);
+            
+            const tabela = {
+              id: operacaoId,
+              tipo: tipo,
+              data: new Date().toLocaleString('pt-BR'),
+              carnes: carnes.map(mov => ({ ...mov, concluido: false })),
+              queijos: queijos.map(mov => ({ ...mov, concluido: false })),
+              finalizada: false
+            };
+            
+            setTabelasVisualizacao(prev => ({
+              ...prev,
+              [operacaoId]: tabela
+            }));
+            
+            return tabela;
           };
 
           const handleAbertura = () => {
@@ -469,7 +513,7 @@
             const novaEntrada = {
               id: Date.now(),
               data: new Date().toLocaleString('pt-BR'),
-              tipo: 'ABERTURA',
+              tipo: 'abertura',
               usuario: usuarioLogado.nome,        // ← NOVO
               tipoUsuario: usuarioLogado.tipo,    // ← NOVO
               movimentacoes,
@@ -479,6 +523,11 @@
             };
 
             setHistorico(prev => [novaEntrada, ...prev]);
+            // Criar tabela de visualização
+            const movimentacoesParaAssar = movimentacoes.filter(mov => mov.quantidade > 0);
+            if (movimentacoesParaAssar.length > 0) {
+              criarTabelaVisualizacao(movimentacoesParaAssar, 'abertura', novaEntrada.id);
+            }
             setModalAberturaAberto(false);
             setOperacoesDia(prev => ({ ...prev, aberturaFeita: true }));
           };
@@ -532,7 +581,7 @@
             const novaEntrada = {
               id: Date.now(),
               data: new Date().toLocaleString('pt-BR'),
-              tipo: 'FECHO',
+              tipo: 'fecho',
               usuario: usuarioLogado.nome,        // ← NOVO
               tipoUsuario: usuarioLogado.tipo,    // ← NOVO
               movimentacoes,
@@ -605,6 +654,11 @@
 
             setHistorico(prev => [novaEntrada, ...prev]);
 
+            // Criar tabela de visualização para fornadas
+            if (tipoOperacao === 'saida') {
+              criarTabelaVisualizacao(movimentacoes, 'fornada', novaEntrada.id);
+            }
+
             // Limpar formulário
             const quantidadesLimpas = {};
             sabores.forEach(sabor => {
@@ -619,6 +673,159 @@
             if (quantidade === 0) return 'text-red-600 bg-red-50';
             if (quantidade < 80) return 'text-yellow-600 bg-yellow-50';
             return 'text-green-600 bg-green-50';
+          };
+
+          // INICIO DA TABELA DE VISUALIZAÇÂO
+          const TabelaVisualizacao = ({ tabela, onClose, onUpdate }) => {
+            const [tabelaLocal, setTabelaLocal] = useState(tabela);
+            
+            const marcarConcluido = (tipo, index) => {
+              setTabelaLocal(prev => ({
+                ...prev,
+                [tipo]: prev[tipo].map((item, i) => 
+                  i === index ? { ...item, concluido: !item.concluido } : item
+                )
+              }));
+            };
+            
+            const finalizarTabela = () => {
+              if (!confirm('Confirma que todas as empanadas foram assadas conforme a lista?')) return;
+              
+              const tabelaFinalizada = { ...tabelaLocal, finalizada: true };
+              onUpdate(tabelaFinalizada);
+              onClose();
+            };
+            
+            const totalCarnes = tabelaLocal.carnes.reduce((sum, item) => sum + item.quantidade, 0);
+            const totalQueijos = tabelaLocal.queijos.reduce((sum, item) => sum + item.quantidade, 0);
+            const carneConcluidas = tabelaLocal.carnes.filter(item => item.concluido).reduce((sum, item) => sum + item.quantidade, 0);
+            const queijoConcluidas = tabelaLocal.queijos.filter(item => item.concluido).reduce((sum, item) => sum + item.quantidade, 0);
+            
+            return (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-xl max-w-6xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-bold text-gray-900">
+                      🍴 Lista para Assar - {tabelaLocal.tipo === 'abertura' ? 'ABERTURA' : 'FORNADA'}
+                    </h3>
+                    <div className="text-right">
+                      <div className="text-sm text-gray-600">{tabelaLocal.data}</div>
+                      {tabelaLocal.finalizada && (
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold">
+                          ✅ FINALIZADA
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* CARNES */}
+                    <div className="bg-red-50 rounded-lg p-4 border-2 border-red-200">
+                      <h4 className="text-xl font-bold text-red-800 mb-4 text-center">
+                        🥩 CARNES ({carneConcluidas}/{totalCarnes})
+                      </h4>
+                      <div className="space-y-2">
+                        {tabelaLocal.carnes.map((item, index) => (
+                          <div key={index} className={`flex items-center justify-between p-3 rounded-lg border-2 ${
+                            item.concluido ? 'bg-green-100 border-green-300' : 'bg-white border-gray-200'
+                          }`}>
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={() => !tabelaLocal.finalizada && marcarConcluido('carnes', index)}
+                                disabled={tabelaLocal.finalizada}
+                                className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                                  item.concluido 
+                                    ? 'bg-green-500 border-green-500 text-white' 
+                                    : 'border-gray-300 hover:border-green-400'
+                                } ${tabelaLocal.finalizada ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                {item.concluido && '✓'}
+                              </button>
+                              <span className={`font-medium ${item.concluido ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                {item.sabor}
+                              </span>
+                            </div>
+                            <span className={`font-bold text-lg ${item.concluido ? 'text-green-600' : 'text-red-600'}`}>
+                              {item.quantidade}
+                            </span>
+                          </div>
+                        ))}
+                        {tabelaLocal.carnes.length === 0 && (
+                          <div className="text-center py-4 text-gray-500">
+                            Nenhuma carne para assar
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* QUEIJOS */}
+                    <div className="bg-yellow-50 rounded-lg p-4 border-2 border-yellow-200">
+                      <h4 className="text-xl font-bold text-yellow-800 mb-4 text-center">
+                        🧀 QUEIJOS ({queijoConcluidas}/{totalQueijos})
+                      </h4>
+                      <div className="space-y-2">
+                        {tabelaLocal.queijos.map((item, index) => (
+                          <div key={index} className={`flex items-center justify-between p-3 rounded-lg border-2 ${
+                            item.concluido ? 'bg-green-100 border-green-300' : 'bg-white border-gray-200'
+                          }`}>
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={() => !tabelaLocal.finalizada && marcarConcluido('queijos', index)}
+                                disabled={tabelaLocal.finalizada}
+                                className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                                  item.concluido 
+                                    ? 'bg-green-500 border-green-500 text-white' 
+                                    : 'border-gray-300 hover:border-green-400'
+                                } ${tabelaLocal.finalizada ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                {item.concluido && '✓'}
+                              </button>
+                              <span className={`font-medium ${item.concluido ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                {item.sabor}
+                              </span>
+                            </div>
+                            <span className={`font-bold text-lg ${item.concluido ? 'text-green-600' : 'text-yellow-600'}`}>
+                              {item.quantidade}
+                            </span>
+                          </div>
+                        ))}
+                        {tabelaLocal.queijos.length === 0 && (
+                          <div className="text-center py-4 text-gray-500">
+                            Nenhum queijo para assar
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex space-x-3 mt-6">
+                    <button
+                      onClick={onClose}
+                      className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      Fechar
+                    </button>
+                    {!tabelaLocal.finalizada && (
+                      <button
+                        onClick={finalizarTabela}
+                        className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-bold"
+                      >
+                        ✅ Finalizar Lista (Dupla Confirmação)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          };
+          // FIM DA TABELA DE VISUALIZAÇÂO
+
+          // ATT TABELA DE VISUALIZAÇÃO
+          const atualizarTabela = (tabelaAtualizada) => {
+            setTabelasVisualizacao(prev => ({
+              ...prev,
+              [tabelaAtualizada.id]: tabelaAtualizada
+            }));
           };
 
           const totalEstoque = Object.values(estoque).reduce((sum, qty) => sum + qty, 0);
@@ -930,9 +1137,9 @@
                           Roturas
                         </button>
                         <button
-                          onClick={() => setFiltroHistorico('ABERTURA')}
+                          onClick={() => setFiltroHistorico('abertura')}
                           className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                            filtroHistorico === 'ABERTURA'
+                            filtroHistorico === 'abertura'
                               ? 'bg-blue-500 text-white' 
                               : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                           }`}
@@ -940,9 +1147,9 @@
                           Aberturas
                         </button>
                         <button
-                          onClick={() => setFiltroHistorico('FECHO')}
+                          onClick={() => setFiltroHistorico('fecho')}
                           className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                            filtroHistorico === 'FECHO' 
+                            filtroHistorico === 'fecho' 
                               ? 'bg-purple-500 text-white' 
                               : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                           }`}
@@ -1068,9 +1275,26 @@
                                       ))
                                     )}
                                   </div>
-                                </td>
+                                  </td>
                                 <td className="px-6 py-4 text-sm text-gray-500">
-                                  {entrada.observacoes}
+                                  <div className="space-y-2">
+                                    <div>{entrada.observacoes}</div>
+                                    {(entrada.tipo === 'abertura' || entrada.tipo === 'saida') && tabelasVisualizacao[entrada.id] && (
+                                      <button
+                                        onClick={() => {
+                                          setTabelaAtual(tabelasVisualizacao[entrada.id]);
+                                          setModalTabelaAberto(true);
+                                        }}
+                                        className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                                          tabelasVisualizacao[entrada.id].finalizada
+                                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                            : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                        }`}
+                                      >
+                                        {tabelasVisualizacao[entrada.id].finalizada ? '✅ Lista Finalizada' : '📋 Ver Lista para Assar'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1665,6 +1889,19 @@
                   </div>
                 </div>
               )}
+
+              {/* Modal Tabela de Visualização */}
+              {modalTabelaAberto && tabelaAtual && (
+                <TabelaVisualizacao
+                  tabela={tabelaAtual}
+                  onClose={() => {
+                    setModalTabelaAberto(false);
+                    setTabelaAtual(null);
+                  }}
+                  onUpdate={atualizarTabela}
+                />
+              )}
+
             </div>
           );
         };
