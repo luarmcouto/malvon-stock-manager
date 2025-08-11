@@ -374,13 +374,16 @@
 
           // Verificar se botões devem aparecer baseado no horário
           const verificarHorario = () => {
-            const agora = new Date();
-            const horaAtual = agora.getHours().toString().padStart(2, '0') + ':' + agora.getMinutes().toString().padStart(2, '0');
+            // CÓDIGO ORIGINAL COMENTADO (para reativar futuramente):
+            // const agora = new Date();
+            // const horaAtual = agora.getHours().toString().padStart(2, '0') + ':' + agora.getMinutes().toString().padStart(2, '0');
+            // const aberturaDisponivel = horaAtual >= configuracaoHorarios.aberturaInicio && horaAtual <= configuracaoHorarios.aberturaFim;
+            // const fechoDisponivel = horaAtual >= configuracaoHorarios.fechoInicio && horaAtual <= configuracaoHorarios.fechoFim;
+            // return { aberturaDisponivel, fechoDisponivel };
             
-            const aberturaDisponivel = horaAtual >= configuracaoHorarios.aberturaInicio && horaAtual <= configuracaoHorarios.aberturaFim;
-            const fechoDisponivel = horaAtual >= configuracaoHorarios.fechoInicio && horaAtual <= configuracaoHorarios.fechoFim;
-            
-            return { aberturaDisponivel, fechoDisponivel };
+            // TEMPORÁRIO: sempre disponível
+            return { aberturaDisponivel: true, fechoDisponivel: true };
+
           };
 
           // Verificar se pode fazer abertura (precisa ter feito fecho no dia anterior)
