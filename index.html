@@ -689,6 +689,15 @@
             };
             
             const finalizarTabela = () => {
+              // Verificar se todos os itens estão marcados
+              const todosCarnesConcluidos = tabelaLocal.carnes.every(item => item.concluido);
+              const todosQueijosConcluidos = tabelaLocal.queijos.every(item => item.concluido);
+              
+              if (!todosCarnesConcluidos || !todosQueijosConcluidos) {
+                alert('⚠️ ATENÇÃO: Todos os sabores devem ser marcados como concluídos antes de finalizar a lista!');
+                return;
+              }
+              
               if (!confirm('Confirma que todas as empanadas foram assadas conforme a lista?')) return;
               
               const tabelaFinalizada = { ...tabelaLocal, finalizada: true };
@@ -808,7 +817,11 @@
                     {!tabelaLocal.finalizada && (
                       <button
                         onClick={finalizarTabela}
-                        className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-bold"
+                        className={`flex-1 px-4 py-2 rounded-lg transition-colors font-bold ${
+                          tabelaLocal.carnes.every(item => item.concluido) && tabelaLocal.queijos.every(item => item.concluido)
+                            ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
                       >
                         ✅ Finalizar Lista (Dupla Confirmação)
                       </button>
