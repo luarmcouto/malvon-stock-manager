@@ -469,7 +469,7 @@
             const novaEntrada = {
               id: Date.now(),
               data: new Date().toLocaleString('pt-BR'),
-              tipo: 'abertura',
+              tipo: 'ABERTURA',
               usuario: usuarioLogado.nome,        // ← NOVO
               tipoUsuario: usuarioLogado.tipo,    // ← NOVO
               movimentacoes,
@@ -532,7 +532,7 @@
             const novaEntrada = {
               id: Date.now(),
               data: new Date().toLocaleString('pt-BR'),
-              tipo: 'fecho',
+              tipo: 'FECHO',
               usuario: usuarioLogado.nome,        // ← NOVO
               tipoUsuario: usuarioLogado.tipo,    // ← NOVO
               movimentacoes,
@@ -930,7 +930,7 @@
                           Roturas
                         </button>
                         <button
-                          onClick={() => setFiltroHistorico('abertura')}
+                          onClick={() => setFiltroHistorico('ABERTURA')}
                           className={`px-3 py-1 text-sm rounded-full transition-colors ${
                             filtroHistorico === 'ABERTURA'
                               ? 'bg-blue-500 text-white' 
@@ -940,7 +940,7 @@
                           Aberturas
                         </button>
                         <button
-                          onClick={() => setFiltroHistorico('fecho')}
+                          onClick={() => setFiltroHistorico('FECHO')}
                           className={`px-3 py-1 text-sm rounded-full transition-colors ${
                             filtroHistorico === 'FECHO' 
                               ? 'bg-purple-500 text-white' 
